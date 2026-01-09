@@ -32,24 +32,22 @@ interface Story {
 
 interface SurveyResult {
   organization: Organization
-  ministering: Answer
-  neighbors: Answer
-  survey: Answer
+  q_did_you_set_a_cfm_goal: Answer
+  q_did_you_make_progress_this_week: Answer
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('submit-goals')
   const [organization, setOrganization] = useState<Organization>(null)
-  const [ministering, setMinistering] = useState<Answer>(null)
-  const [neighbors, setNeighbors] = useState<Answer>(null)
-  const [survey, setSurvey] = useState<Answer>(null)
+  const [q_did_you_set_a_cfm_goal, setQDidYouSetACfmGoal] = useState<Answer>(null)
+  const [q_did_you_make_progress_this_week, setQDidYouMakeProgressThisWeek] = useState<Answer>(null)
   const [stories, setStories] = useState<Story[]>([])
   const [storyText, setStoryText] = useState<string>('')
   const [surveyResults, setSurveyResults] = useState<SurveyResult[]>([])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const allAnswered = organization !== null && ministering !== null && neighbors !== null && survey !== null
+    const allAnswered = organization !== null && q_did_you_set_a_cfm_goal !== null && q_did_you_make_progress_this_week !== null
     
     if (!allAnswered) {
       alert('Please answer all questions before submitting.')
@@ -58,9 +56,8 @@ function App() {
 
     const results: SurveyResult = {
       organization,
-      ministering,
-      neighbors,
-      survey
+      q_did_you_set_a_cfm_goal,
+      q_did_you_make_progress_this_week
     }
     
     setSurveyResults(prev => [...prev, results])
@@ -69,9 +66,8 @@ function App() {
     
     // Reset form
     setOrganization(null)
-    setMinistering(null)
-    setNeighbors(null)
-    setSurvey(null)
+    setQDidYouSetACfmGoal(null)
+    setQDidYouMakeProgressThisWeek(null)
   }
 
   const renderSubmitGoals = () => (
@@ -124,26 +120,26 @@ function App() {
 
         <div className="question-group">
           <label className="question-label">
-            Have you completed your ministering this week?
+            Did you set or re-evaluate a Come Follow Me goal either individually or with your family?
           </label>
           <div className="radio-group">
             <label className="radio-label">
               <input
                 type="radio"
-                name="ministering"
+                name="q_did_you_set_a_cfm_goal"
                 value="yes"
-                checked={ministering === 'yes'}
-                onChange={() => setMinistering('yes')}
+                checked={q_did_you_set_a_cfm_goal === 'yes'}
+                onChange={() => setQDidYouSetACfmGoal('yes')}
               />
               <span>Yes</span>
             </label>
             <label className="radio-label">
               <input
                 type="radio"
-                name="ministering"
+                name="q_did_you_set_a_cfm_goal"
                 value="no"
-                checked={ministering === 'no'}
-                onChange={() => setMinistering('no')}
+                checked={q_did_you_set_a_cfm_goal === 'no'}
+                onChange={() => setQDidYouSetACfmGoal('no')}
               />
               <span>No</span>
             </label>
@@ -152,54 +148,26 @@ function App() {
 
         <div className="question-group">
           <label className="question-label">
-            Have you checked in on your neighbors?
+            Did you make progress on your goal this week?
           </label>
           <div className="radio-group">
             <label className="radio-label">
               <input
                 type="radio"
-                name="neighbors"
+                name="q_did_you_make_progress_this_week"
                 value="yes"
-                checked={neighbors === 'yes'}
-                onChange={() => setNeighbors('yes')}
+                checked={q_did_you_make_progress_this_week === 'yes'}
+                onChange={() => setQDidYouMakeProgressThisWeek('yes')}
               />
               <span>Yes</span>
             </label>
             <label className="radio-label">
               <input
                 type="radio"
-                name="neighbors"
+                name="q_did_you_make_progress_this_week"
                 value="no"
-                checked={neighbors === 'no'}
-                onChange={() => setNeighbors('no')}
-              />
-              <span>No</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="question-group">
-          <label className="question-label">
-            Do you like this survey?
-          </label>
-          <div className="radio-group">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="survey"
-                value="yes"
-                checked={survey === 'yes'}
-                onChange={() => setSurvey('yes')}
-              />
-              <span>Yes</span>
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="survey"
-                value="no"
-                checked={survey === 'no'}
-                onChange={() => setSurvey('no')}
+                checked={q_did_you_make_progress_this_week === 'no'}
+                onChange={() => setQDidYouMakeProgressThisWeek('no')}
               />
               <span>No</span>
             </label>
@@ -212,7 +180,7 @@ function App() {
     </div>
   )
 
-  const getChartData = (questionKey: 'ministering' | 'neighbors' | 'survey') => {
+  const getChartData = (questionKey: 'q_did_you_set_a_cfm_goal' | 'q_did_you_make_progress_this_week') => {
     const orgLabels = ['Relief Society', 'Elders Quorum', 'Young Mens', 'Young Womens']
     const orgKeys: Organization[] = ['relief-society', 'elders-quorum', 'young-mens', 'young-womens']
     
@@ -304,9 +272,8 @@ function App() {
       },
     }
 
-    const ministeringData = getChartData('ministering')
-    const neighborsData = getChartData('neighbors')
-    const surveyData = getChartData('survey')
+    const cfmGoalData = getChartData('q_did_you_set_a_cfm_goal')
+    const progressData = getChartData('q_did_you_make_progress_this_week')
 
     return (
       <div className="reports-container">
@@ -322,24 +289,16 @@ function App() {
                 <div className="chart-wrapper">
                   <div className="chart-container">
                     <Bar 
-                      data={{ ...ministeringData }} 
-                      options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, text: 'Have you completed your ministering this week?' } } }} 
+                      data={{ ...cfmGoalData }} 
+                      options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, text: 'Did you set or re-evaluate a Come Follow Me goal either individually or with your family?' } } }} 
                     />
                   </div>
                 </div>
                 <div className="chart-wrapper">
                   <div className="chart-container">
                     <Bar 
-                      data={{ ...neighborsData }} 
-                      options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, text: 'Have you checked in on your neighbors?' } } }} 
-                    />
-                  </div>
-                </div>
-                <div className="chart-wrapper">
-                  <div className="chart-container">
-                    <Bar 
-                      data={{ ...surveyData }} 
-                      options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, text: 'Do you like this survey?' } } }} 
+                      data={{ ...progressData }} 
+                      options={{ ...chartOptions, plugins: { ...chartOptions.plugins, title: { ...chartOptions.plugins.title, text: 'Did you make progress on your goal this week?' } } }} 
                     />
                   </div>
                 </div>
