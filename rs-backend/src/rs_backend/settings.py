@@ -19,6 +19,12 @@ class Settings(BaseSettings):
         description="Directory for CSV data files",
     )
 
+    # Static files directory
+    static_dir: Path = Field(
+        default_factory=lambda: THIS_DIR / "static",
+        description="Directory for static frontend files",
+    )
+
     # Google Sheets settings (optional, only needed if use_csv_service=False)
     google_sheets_credentials_path: str | None = None
     google_sheets_spreadsheet_id: str | None = None
