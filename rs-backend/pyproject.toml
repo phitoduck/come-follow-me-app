@@ -15,6 +15,7 @@ dependencies = [
     "google-api-python-client",
     "google-auth",
     "httpx",
+    "loguru",
 ]
 
 [project.optional-dependencies]
@@ -30,4 +31,4 @@ build-backend = "hatchling.build"
 
 [tool.poe.tasks]
 test = "pytest"
-serve = "uv run uvicorn rs_backend.main:app --reload --reload-dir src --host 0.0.0.0 --port 8000"
+serve = "uv run python -u -m uvicorn rs_backend.main:app --reload --reload-dir src --host 0.0.0.0 --port 8000 --no-access-log"

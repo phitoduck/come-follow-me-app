@@ -5,7 +5,7 @@ from rs_backend.schemas.survey import SurveyReport
 from rs_backend.schemas.story import Story
 
 
-class BaseService(ABC):
+class SurveyDataService(ABC):
     """Abstract base class for data persistence services."""
 
     @abstractmethod

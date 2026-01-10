@@ -16,7 +16,8 @@ class SurveyReport(BaseModel):
 
     total_responses: int
     organization_breakdown: dict[str, int]
-    question_stats: dict[str, dict[str, int]]
+    question_stats: dict[str, dict[str, int]]  # Overall stats: {"q_name": {"yes": count, "no": count}}
+    question_stats_by_org: dict[str, dict[str, dict[str, int]]]  # By org: {"q_name": {"org": {"yes": count, "no": count}}}
 
 
 class SurveyRecord(BaseModel):

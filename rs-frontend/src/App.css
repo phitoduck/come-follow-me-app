@@ -257,6 +257,10 @@
   transition: all 0.3s ease;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   position: relative;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tab-button::after {
@@ -290,7 +294,7 @@
 }
 
 .reports-content {
-  padding: 2rem 0.5rem;
+  padding: 0.5rem 0.5rem;
   min-height: 200px;
 }
 
@@ -302,6 +306,18 @@
 
 .chart-wrapper {
   width: 100%;
+}
+
+.chart-title {
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: left;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+  margin: 0;
+  padding: 0;
+  margin-bottom: 0.25rem;
+  line-height: 1.4;
 }
 
 .chart-container {
@@ -501,4 +517,105 @@
   .icon-button i {
     font-size: 40px;
   }
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-title {
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.modal-message {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+  margin: 0 0 2rem 0;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.modal-button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.modal-button-cancel {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.modal-button-cancel:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.modal-button-confirm {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+  font-weight: 600;
+}
+
+.modal-button-confirm:hover {
+  background: rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }

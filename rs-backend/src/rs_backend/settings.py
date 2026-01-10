@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Get the directory where this file is located
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     )
 
     # Google Sheets settings (optional, only needed if use_csv_service=False)
-    google_sheets_credentials_path: str | None = None
+    google_sheets_credentials_path: SecretStr | None = None
     google_sheets_spreadsheet_id: str | None = None
 
     model_config = SettingsConfigDict(

@@ -1,13 +1,16 @@
 import csv
 from pathlib import Path
 
+from loguru import logger
+
+import rs_backend.logger  # noqa: F401  # Import to configure logger
 from rs_backend.schemas.enums import Organization, YesNo
 from rs_backend.schemas.survey import SurveyReport
 from rs_backend.schemas.story import Story
-from rs_backend.services.base import BaseService
+from rs_backend.services.base import SurveyDataService
 
 
-class CSVService(BaseService):
+class CSVService(SurveyDataService):
     """Service for interacting with local CSV files."""
 
     def __init__(self, data_dir: Path | None = None) -> None:
@@ -66,17 +69,69 @@ class CSVService(BaseService):
         organization: Organization,
     ) -> None:
         """Save a survey response to CSV file."""
+        logger.info(
+            "Saving survey response",
+            datetime_submitted=datetime_submitted,
+            q_did_you_set_a_cfm_goal=q_did_you_set_a_cfm_goal.value,
+            q_did_you_make_progress_this_week=q_did_you_make_progress_this_week.value,
+            organization=organization.value,
+        )
         with open(self.surveys_file, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([datetime_submitted, q_did_you_set_a_cfm_goal.value, q_did_you_make_progress_this_week.value, organization.value])
 
     def get_survey_reports(self) -> SurveyReport:
         """Get survey reports from CSV file."""
-        # TODO: Implement report generation from CSV data
+        if not self.surveys_file.exists():
+            return SurveyReport(
+                total_responses=0,
+                organization_breakdown={},
+                question_stats={},
+                question_stats_by_org={},
+            )
+
+        total_responses = 0
+        organization_breakdown: dict[str, int] = {}
+        question_stats: dict[str, dict[str, int]] = {
+            "q_did_you_set_a_cfm_goal": {"yes": 0, "no": 0},
+            "q_did_you_make_progress_this_week": {"yes": 0, "no": 0},
+        }
+        question_stats_by_org: dict[str, dict[str, dict[str, int]]] = {
+            "q_did_you_set_a_cfm_goal": {},
+            "q_did_you_make_progress_this_week": {},
+        }
+
+        with open(self.surveys_file, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                total_responses += 1
+
+                # Count by organization
+                org = row["organization"]
+                organization_breakdown[org] = organization_breakdown.get(org, 0) + 1
+
+                # Initialize org dicts if needed
+                if org not in question_stats_by_org["q_did_you_set_a_cfm_goal"]:
+                    question_stats_by_org["q_did_you_set_a_cfm_goal"][org] = {"yes": 0, "no": 0}
+                if org not in question_stats_by_org["q_did_you_make_progress_this_week"]:
+                    question_stats_by_org["q_did_you_make_progress_this_week"][org] = {"yes": 0, "no": 0}
+
+                # Count by question (overall)
+                cfm_goal = row["q_did_you_set_a_cfm_goal"].lower()
+                if cfm_goal in ("yes", "no"):
+                    question_stats["q_did_you_set_a_cfm_goal"][cfm_goal] += 1
+                    question_stats_by_org["q_did_you_set_a_cfm_goal"][org][cfm_goal] += 1
+
+                progress = row["q_did_you_make_progress_this_week"].lower()
+                if progress in ("yes", "no"):
+                    question_stats["q_did_you_make_progress_this_week"][progress] += 1
+                    question_stats_by_org["q_did_you_make_progress_this_week"][org][progress] += 1
+
         return SurveyReport(
-            total_responses=0,
-            organization_breakdown={},
-            question_stats={},
+            total_responses=total_responses,
+            organization_breakdown=organization_breakdown,
+            question_stats=question_stats,
+            question_stats_by_org=question_stats_by_org,
         )
 
     def save_story(self, datetime_submitted: str, content: str) -> None:
