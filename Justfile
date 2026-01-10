@@ -27,3 +27,27 @@ serve-google:
 build:
     @cd rs-frontend && pnpm build
 
+# Build Docker image
+build-docker:
+    docker build -t rs-app:latest .
+
+# Run Docker container
+run-docker:
+    docker run -p 8080:8080 rs-app:latest
+
+# Run Docker container with Google Sheets integration
+run-docker-google:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -f "google-credentials.json" ]; then
+        echo "Error: google-credentials.json not found"
+        exit 1
+    fi
+    CREDENTIALS_PATH="$(pwd)/google-credentials.json"
+    docker run -p 9999:8080 \
+        -v "$CREDENTIALS_PATH:/app/google-credentials.json:ro" \
+        -e RS_SURVEY__GOOGLE_SHEETS_CREDENTIALS_PATH=/app/google-credentials.json \
+        -e RS_SURVEY__USE_CSV_SERVICE=false \
+        -e RS_SURVEY__GOOGLE_SHEETS_SPREADSHEET_ID="12zv4FtCf_Lkpn2Vgm8WekSING4Bh6hf3keL7-yyqM-8" \
+        rs-app:latest
+
