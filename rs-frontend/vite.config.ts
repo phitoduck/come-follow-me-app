@@ -22,9 +22,9 @@ export default defineConfig({
     },
 
     manifest: {
-      name: 'rs-app',
-      short_name: 'rs-app',
-      description: 'rs-app',
+      name: 'Come Follow Me App',
+      short_name: 'CFM',
+      description: 'Come Follow Me Survey App',
       theme_color: '#ffffff',
     },
 

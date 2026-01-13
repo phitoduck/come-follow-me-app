@@ -27,9 +27,12 @@ serve-google:
 build:
     @cd rs-frontend && pnpm build
 
-# Build Docker image
+# Build Docker image (single architecture for local testing)
 build-docker:
-    docker build -t rs-app:latest .
+    #!/usr/bin/env bash
+    set -e
+    VERSION=$(cat version.txt | tr -d '[:space:]')
+    docker build -t eriddoch/come-follow-me-app:$VERSION .
 
 # Run Docker container
 run-docker:
@@ -51,3 +54,37 @@ run-docker-google:
         -e RS_SURVEY__GOOGLE_SHEETS_SPREADSHEET_ID="12zv4FtCf_Lkpn2Vgm8WekSING4Bh6hf3keL7-yyqM-8" \
         rs-app:latest
 
+# Build and push Docker image to Docker Hub (multi-architecture: amd64 and arm64)
+build-push-dockerhub:
+    #!/usr/bin/env bash
+    set -e
+    VERSION=$(cat version.txt | tr -d '[:space:]')
+    # Create buildx builder if it doesn't exist
+    if ! docker buildx ls | grep -q multiarch-builder; then
+        docker buildx create --name multiarch-builder --use --bootstrap || true
+    fi
+    docker buildx use multiarch-builder
+    docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -t eriddoch/come-follow-me-app:$VERSION \
+        --push \
+        .
+
+# Build and push Docker image to Harbor private registry (multi-architecture: amd64 and arm64)
+# Requires: HARBOR_PASSWORD environment variable
+build-push-harbor:
+    #!/usr/bin/env bash
+    set -ex
+    VERSION=$(cat version.txt | tr -d '[:space:]')
+    source .env
+    echo "$HARBOR_PASSWORD" | docker login cr.priv.mlops-club.org -u admin --password-stdin
+    # Create buildx builder if it doesn't exist
+    if ! docker buildx ls | grep -q multiarch-builder; then
+        docker buildx create --name multiarch-builder --use --bootstrap || true
+    fi
+    docker buildx use multiarch-builder
+    docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -t cr.priv.mlops-club.org/come-follow-me-app/rs-app:$VERSION \
+        --push \
+        .
