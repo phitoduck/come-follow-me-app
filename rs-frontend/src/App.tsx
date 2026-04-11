@@ -21,7 +21,6 @@ ChartJS.register(
   Legend
 )
 
-type Answer = 'yes' | 'no' | null
 type Organization = 'relief-society' | 'elders-quorum' | 'young-mens' | 'young-womens' | null
 
 interface Story {
@@ -29,17 +28,9 @@ interface Story {
   content: string
 }
 
-interface SurveyResult {
-  organization: Organization
-  q_did_you_set_a_cfm_goal: Answer
-  q_did_you_make_progress_this_week: Answer
-}
-
-interface SurveyReport {
-  total_responses: number
-  organization_breakdown: Record<string, number>
-  question_stats: Record<string, Record<string, number>>
-  question_stats_by_org: Record<string, Record<string, Record<string, number>>>
+interface MinisteringReport {
+  total_events: number
+  counts_by_org: Record<string, number>
 }
 
 /**
@@ -58,59 +49,13 @@ function mapOrganizationToBackend(org: Organization): string {
   return mapping[org]
 }
 
-/**
- * Maps backend organization values (with spaces) to frontend format (with hyphens).
- */
-function mapOrganizationFromBackend(org: string): Organization {
-  const mapping: Record<string, Organization> = {
-    'relief society': 'relief-society',
-    'elders quorum': 'elders-quorum',
-    'young mens': 'young-mens',
-    'young womens': 'young-womens',
-  }
-  return mapping[org] || null
-}
-
-/**
- * Wraps text into multiple lines with a maximum character limit per line.
- * Tries to break at word boundaries when possible.
- */
-function wrapText(text: string, maxCharsPerLine: number = 50): string {
-  if (text.length <= maxCharsPerLine) {
-    return text
-  }
-
-  const words = text.split(' ')
-  const lines: string[] = []
-  let currentLine = ''
-
-  for (const word of words) {
-    if (currentLine === '') {
-      currentLine = word
-    } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
-      currentLine += ' ' + word
-    } else {
-      lines.push(currentLine)
-      currentLine = word
-    }
-  }
-
-  if (currentLine) {
-    lines.push(currentLine)
-  }
-
-  return lines.join('\n')
-}
-
 function App() {
   const location = useLocation()
   const [organization, setOrganization] = useState<Organization>(null)
-  const [q_did_you_set_a_cfm_goal, setQDidYouSetACfmGoal] = useState<Answer>(null)
-  const [q_did_you_make_progress_this_week, setQDidYouMakeProgressThisWeek] = useState<Answer>(null)
+  const [submitState, setSubmitState] = useState<'idle' | 'submitted'>('idle')
   const [stories, setStories] = useState<Story[]>([])
   const [storyText, setStoryText] = useState<string>('')
-  const [surveyResults, setSurveyResults] = useState<SurveyResult[]>([])
-  const [surveyReport, setSurveyReport] = useState<SurveyReport | null>(null)
+  const [ministeringReport, setMinisteringReport] = useState<MinisteringReport | null>(null)
   const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
   const [isLoadingStories, setIsLoadingStories] = useState<boolean>(false)
@@ -119,22 +64,22 @@ function App() {
   const [pendingStoryText, setPendingStoryText] = useState<string>('')
 
   // Determine active tab from location
-  const activeTab = location.pathname === '/reports' ? 'reports' 
-    : location.pathname === '/stories' ? 'stories' 
-    : 'submit-goals'
+  const activeTab = location.pathname === '/reports' ? 'reports'
+    : location.pathname === '/stories' ? 'stories'
+    : 'submit'
 
-  // Fetch survey reports from backend
+  // Fetch ministering reports from backend
   useEffect(() => {
     const fetchReports = async () => {
       setIsLoadingReports(true)
       setReportsError(null)
       try {
-        const response = await fetch('/survey/reports')
+        const response = await fetch('/ministering/reports')
         if (!response.ok) {
           throw new Error(`Failed to fetch reports: ${response.statusText}`)
         }
-        const data: SurveyReport = await response.json()
-        setSurveyReport(data)
+        const data: MinisteringReport = await response.json()
+        setMinisteringReport(data)
       } catch (error) {
         console.error('Error fetching reports:', error)
         setReportsError(error instanceof Error ? error.message : 'Failed to fetch reports')
@@ -143,7 +88,6 @@ function App() {
       }
     }
 
-    // Fetch when reports tab is active or on mount
     if (activeTab === 'reports') {
       fetchReports()
     }
@@ -169,43 +113,23 @@ function App() {
       }
     }
 
-    // Fetch when stories tab is active or on mount
     if (activeTab === 'stories') {
       fetchStories()
     }
   }, [activeTab])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log('handleSubmit called')
-    
-    const allAnswered = organization !== null && q_did_you_set_a_cfm_goal !== null && q_did_you_make_progress_this_week !== null
-    
-    if (!allAnswered) {
-      alert('Please answer all questions before submitting.')
+  const handleMinisteringSubmit = async () => {
+    if (organization === null) {
+      alert('Please select your organization first.')
       return
     }
 
-    const results: SurveyResult = {
-      organization,
-      q_did_you_set_a_cfm_goal,
-      q_did_you_make_progress_this_week
-    }
-    
-    // Update local state for immediate UI feedback
-    setSurveyResults(prev => [...prev, results])
-    
-    // Submit to backend
     const requestBody = {
       organization: mapOrganizationToBackend(organization),
-      q_did_you_set_a_cfm_goal: q_did_you_set_a_cfm_goal,
-      q_did_you_make_progress_this_week: q_did_you_make_progress_this_week,
     }
-    
-    console.log('Making fetch request to /survey/ with body:', requestBody)
-    
+
     try {
-      const response = await fetch('/survey/', {
+      const response = await fetch('/ministering/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -213,187 +137,86 @@ function App() {
         body: JSON.stringify(requestBody),
       })
 
-      console.log('Fetch response received:', response.status, response.statusText)
-
       if (!response.ok) {
-        throw new Error(`Failed to submit survey: ${response.statusText}`)
+        throw new Error(`Failed to submit: ${response.statusText}`)
       }
 
-      const data = await response.json()
-      console.log('Survey submitted successfully:', data)
-      alert('Thank you for completing the survey!')
-      
-      // Refresh reports if we're on the reports tab
-      if (activeTab === 'reports') {
-        const reportsResponse = await fetch('/survey/reports')
-        if (reportsResponse.ok) {
-          const reportsData: SurveyReport = await reportsResponse.json()
-          setSurveyReport(reportsData)
-        }
-      }
+      setSubmitState('submitted')
+
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setSubmitState('idle')
+        setOrganization(null)
+      }, 2000)
     } catch (error) {
-      console.error('Error submitting survey:', error)
-      alert('Failed to submit survey. Please try again.')
+      console.error('Error submitting ministering event:', error)
+      alert('Failed to submit. Please try again.')
     }
-    
-    // Reset form
-    setOrganization(null)
-    setQDidYouSetACfmGoal(null)
-    setQDidYouMakeProgressThisWeek(null)
   }
 
-  const renderSubmitGoals = () => (
+  const renderSubmit = () => (
     <div className="frosted-glass-card">
-      <h1 className="survey-title">Come Follow Me Tracker</h1>
-      <form onSubmit={handleSubmit}>
+      <h1 className="survey-title">Ministering Tracker</h1>
+
       <div className="question-group">
-          <label className="question-label">
-            Which are you?
-          </label>
-          <div className="icon-group">
-            <button
-              type="button"
-              className={`icon-button ${organization === 'relief-society' ? 'selected' : ''}`}
-              onClick={() => setOrganization('relief-society')}
-              aria-label="Relief Society"
-            >
-              <i className="fa-solid fa-person-dress"></i>
-              <span>Relief Society</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'elders-quorum' ? 'selected' : ''}`}
-              onClick={() => setOrganization('elders-quorum')}
-              aria-label="Elders Quorum"
-            >
-              <i className="fa-solid fa-user-tie"></i>
-              <span>Elders Quorum</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'young-mens' ? 'selected' : ''}`}
-              onClick={() => setOrganization('young-mens')}
-              aria-label="Young Mens"
-            >
-              <i className="fa-solid fa-child"></i>
-              <span>Young Mens</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'young-womens' ? 'selected' : ''}`}
-              onClick={() => setOrganization('young-womens')}
-              aria-label="Young Womens"
-            >
-              <i className="fa-solid fa-child-dress"></i>
-              <span>Young Womens</span>
-            </button>
-          </div>
+        <label className="question-label">
+          Which organization are you in?
+        </label>
+        <div className="icon-group">
+          <button
+            type="button"
+            className={`icon-button ${organization === 'relief-society' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('relief-society'); setSubmitState('idle') }}
+            aria-label="Relief Society"
+          >
+            <i className="fa-solid fa-person-dress"></i>
+            <span>Relief Society</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'elders-quorum' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('elders-quorum'); setSubmitState('idle') }}
+            aria-label="Elders Quorum"
+          >
+            <i className="fa-solid fa-user-tie"></i>
+            <span>Elders Quorum</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'young-mens' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('young-mens'); setSubmitState('idle') }}
+            aria-label="Young Mens"
+          >
+            <i className="fa-solid fa-child"></i>
+            <span>Young Mens</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'young-womens' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('young-womens'); setSubmitState('idle') }}
+            aria-label="Young Womens"
+          >
+            <i className="fa-solid fa-child-dress"></i>
+            <span>Young Womens</span>
+          </button>
         </div>
+      </div>
 
-        <div className="question-group">
-          <label className="question-label">
-            Did you set or re-evaluate a Come Follow Me goal either individually or with your family?
-          </label>
-          <div className="radio-group">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_set_a_cfm_goal"
-                value="yes"
-                checked={q_did_you_set_a_cfm_goal === 'yes'}
-                onChange={() => setQDidYouSetACfmGoal('yes')}
-              />
-              <span>Yes</span>
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_set_a_cfm_goal"
-                value="no"
-                checked={q_did_you_set_a_cfm_goal === 'no'}
-                onChange={() => setQDidYouSetACfmGoal('no')}
-              />
-              <span>No</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="question-group">
-          <label className="question-label">
-            Did you make progress on your goal this week?
-          </label>
-          <div className="radio-group">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_make_progress_this_week"
-                value="yes"
-                checked={q_did_you_make_progress_this_week === 'yes'}
-                onChange={() => setQDidYouMakeProgressThisWeek('yes')}
-              />
-              <span>Yes</span>
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_make_progress_this_week"
-                value="no"
-                checked={q_did_you_make_progress_this_week === 'no'}
-                onChange={() => setQDidYouMakeProgressThisWeek('no')}
-              />
-              <span>No</span>
-            </label>
-          </div>
-        </div>
-
-      <button type="submit" className="submit-button">
-        Submit
+      <button
+        type="button"
+        className={`ministering-button ${submitState === 'submitted' ? 'submitted' : ''}`}
+        onClick={handleMinisteringSubmit}
+        disabled={submitState === 'submitted'}
+      >
+        {submitState === 'submitted' ? (
+          <><span className="check-icon"><i className="fa-solid fa-circle-check"></i></span> Recorded! Thank you.</>
+        ) : (
+          <><i className="fa-solid fa-hands-holding-heart"></i> I Was Ministered To</>
+        )}
       </button>
-      </form>
+      <p className="submit-hint">Tap to record that you felt supported or ministered to</p>
     </div>
   )
-
-  const getChartData = (questionKey: 'q_did_you_set_a_cfm_goal' | 'q_did_you_make_progress_this_week') => {
-    const orgLabels = ['Relief Society', 'Elders Quorum', 'Young Mens', 'Young Womens']
-    const orgBackendKeys = ['relief society', 'elders quorum', 'young mens', 'young womens']
-    
-    const yesCounts: number[] = []
-
-    if (surveyReport && surveyReport.question_stats_by_org[questionKey]) {
-      // Use backend data
-      orgBackendKeys.forEach(orgBackendKey => {
-        const orgStats = surveyReport.question_stats_by_org[questionKey][orgBackendKey]
-        const yesCount = orgStats?.yes || 0
-        yesCounts.push(yesCount)
-      })
-    } else {
-      // Fallback to local state if backend data not available
-      const orgKeys: Organization[] = ['relief-society', 'elders-quorum', 'young-mens', 'young-womens']
-      
-      orgKeys.forEach(org => {
-        let yesCount = 0
-        surveyResults.forEach(result => {
-          if (result.organization === org) {
-            if (result[questionKey] === 'yes') yesCount++
-          }
-        })
-        yesCounts.push(yesCount)
-      })
-    }
-
-    return {
-      labels: orgLabels,
-      datasets: [
-        {
-          label: 'Yes',
-          data: yesCounts,
-          backgroundColor: 'rgba(255, 255, 255, 0.4)',
-          borderColor: 'rgba(255, 255, 255, 0.6)',
-          borderWidth: 2,
-        },
-      ],
-    }
-  }
 
   const renderReports = () => {
     const chartOptions = {
@@ -444,10 +267,27 @@ function App() {
       },
     }
 
-    const cfmGoalData = getChartData('q_did_you_set_a_cfm_goal')
-    const progressData = getChartData('q_did_you_make_progress_this_week')
+    const orgLabels = ['Relief Society', 'Elders Quorum', 'Young Mens', 'Young Womens']
+    const orgBackendKeys = ['relief society', 'elders quorum', 'young mens', 'young womens']
 
-    const hasData = surveyReport && surveyReport.total_responses > 0
+    const counts = orgBackendKeys.map(key =>
+      ministeringReport?.counts_by_org[key] || 0
+    )
+
+    const chartData = {
+      labels: orgLabels,
+      datasets: [
+        {
+          label: 'Times Ministered To',
+          data: counts,
+          backgroundColor: 'rgba(255, 255, 255, 0.4)',
+          borderColor: 'rgba(255, 255, 255, 0.6)',
+          borderWidth: 2,
+        },
+      ],
+    }
+
+    const hasData = ministeringReport && ministeringReport.total_events > 0
 
     return (
       <div className="reports-container">
@@ -464,25 +304,16 @@ function App() {
               </p>
             ) : !hasData ? (
               <p style={{ color: 'white', textAlign: 'center', fontSize: '1.1rem', padding: '2rem' }}>
-                No survey data yet. Submit some goals to see reports!
+                No data yet. Record a ministering event to see reports!
               </p>
             ) : (
               <div className="charts-wrapper">
                 <div className="chart-wrapper">
-                  <p className="chart-title">Did you set or re-evaluate a Come Follow Me goal either individually or with your family?</p>
+                  <p className="chart-title">Times Members Felt Ministered To &mdash; by Organization</p>
                   <div className="chart-container">
-                    <Bar 
-                      data={{ ...cfmGoalData }} 
-                      options={chartOptions} 
-                    />
-                  </div>
-                </div>
-                <div className="chart-wrapper">
-                  <p className="chart-title">Did you make progress on your goal this week?</p>
-                  <div className="chart-container">
-                    <Bar 
-                      data={{ ...progressData }} 
-                      options={chartOptions} 
+                    <Bar
+                      data={chartData}
+                      options={chartOptions}
                     />
                   </div>
                 </div>
@@ -522,15 +353,13 @@ function App() {
         throw new Error(`Failed to submit story: ${response.statusText}`)
       }
 
-      const newStory: Story = await response.json()
-      
       // Refresh stories list
       const storiesResponse = await fetch('/stories/')
       if (storiesResponse.ok) {
         const storiesData: Story[] = await storiesResponse.json()
         setStories(storiesData)
       }
-      
+
       setStoryText('')
       setPendingStoryText('')
     } catch (error) {
@@ -545,8 +374,6 @@ function App() {
   }
 
   const formatTimestamp = (datetimeStr: string) => {
-    // Parse datetime string in format "YYYY-MM-DD HH:MM:SS UTC"
-    // Convert to ISO format: "YYYY-MM-DDTHH:MM:SSZ"
     const isoStr = datetimeStr.replace(' UTC', '').replace(' ', 'T') + 'Z'
     const date = new Date(isoStr)
     const now = new Date()
@@ -570,7 +397,7 @@ function App() {
           <textarea
             value={storyText}
             onChange={(e) => setStoryText(e.target.value)}
-            placeholder="What's on your mind?"
+            placeholder="Share a time you felt supported or ministered to..."
             className="story-textarea"
             rows={4}
           />
@@ -629,9 +456,9 @@ function App() {
       <nav className="tab-bar">
         <Link
           to="/"
-          className={`tab-button ${activeTab === 'submit-goals' ? 'active' : ''}`}
+          className={`tab-button ${activeTab === 'submit' ? 'active' : ''}`}
         >
-          Submit Goals
+          Submit
         </Link>
         <Link
           to="/reports"
@@ -649,7 +476,7 @@ function App() {
 
       <div className="content-wrapper">
         <Routes>
-          <Route path="/" element={<>{renderSubmitGoals()}</>} />
+          <Route path="/" element={<>{renderSubmit()}</>} />
           <Route path="/reports" element={<>{renderReports()}</>} />
           <Route path="/stories" element={<>{renderStories()}</>} />
         </Routes>

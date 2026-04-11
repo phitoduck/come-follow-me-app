@@ -101,7 +101,7 @@ def create_app() -> FastAPI:
             or path.startswith("docs")
             or path.startswith("openapi.json")
             or path.startswith("redoc")
-            or path.startswith("survey")
+            or path.startswith("ministering")
             or path.startswith("stories")
         ):
             from fastapi import HTTPException
