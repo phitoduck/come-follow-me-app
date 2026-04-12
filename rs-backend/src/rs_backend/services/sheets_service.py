@@ -6,8 +6,8 @@ from googleapiclient.errors import HttpError
 from loguru import logger
 
 import rs_backend.logger  # noqa: F401  # Import to configure logger
-from rs_backend.schemas.enums import Organization, YesNo
-from rs_backend.schemas.survey import SurveyReport
+from rs_backend.schemas.enums import Organization
+from rs_backend.schemas.survey import MinisteringReport
 from rs_backend.schemas.story import Story
 from rs_backend.services.base import SurveyDataService
 from rs_backend.services.errors import (
@@ -18,7 +18,7 @@ from rs_backend.services.errors import (
 )
 
 # Worksheet names
-SURVEYS_WORKSHEET = "surveys"
+MINISTERING_WORKSHEET = "ministering_events"
 STORIES_WORKSHEET = "stories"
 
 
@@ -100,30 +100,19 @@ class SheetsService(SurveyDataService):
 
         logger.info("SheetsService validation successful", spreadsheet_id=spreadsheet_id)
 
-    def save_survey_response(
+    def save_ministering_event(
         self,
         datetime_submitted: str,
-        q_did_you_set_a_cfm_goal: YesNo,
-        q_did_you_make_progress_this_week: YesNo,
         organization: Organization,
     ) -> None:
-        """Save a survey response to Google Sheets."""
+        """Save a ministering event to Google Sheets."""
         logger.info(
-            "Saving survey response",
+            "Saving ministering event",
             datetime_submitted=datetime_submitted,
-            q_did_you_set_a_cfm_goal=q_did_you_set_a_cfm_goal.value,
-            q_did_you_make_progress_this_week=q_did_you_make_progress_this_week.value,
             organization=organization.value,
         )
 
-        values = [
-            [
-                datetime_submitted,
-                q_did_you_set_a_cfm_goal.value,
-                q_did_you_make_progress_this_week.value,
-                organization.value,
-            ]
-        ]
+        values = [[datetime_submitted, organization.value]]
         body = {"values": values}
 
         try:
@@ -132,7 +121,7 @@ class SheetsService(SurveyDataService):
                 .values()
                 .append(
                     spreadsheetId=self.spreadsheet_id,
-                    range=f"{SURVEYS_WORKSHEET}!A:A",
+                    range=f"{MINISTERING_WORKSHEET}!A:A",
                     valueInputOption="RAW",
                     insertDataOption="INSERT_ROWS",
                     body=body,
@@ -149,17 +138,17 @@ class SheetsService(SurveyDataService):
                     f"Spreadsheet not found: {self.spreadsheet_id}"
                 ) from e
             else:
-                raise SheetsServiceError(f"Failed to save survey response: {e}") from e
+                raise SheetsServiceError(f"Failed to save ministering event: {e}") from e
         except Exception as e:
-            raise SheetsServiceError(f"Failed to save survey response: {e}") from e
+            raise SheetsServiceError(f"Failed to save ministering event: {e}") from e
 
-    def get_survey_reports(self) -> SurveyReport:
-        """Get survey reports from Google Sheets."""
+    def get_ministering_reports(self) -> MinisteringReport:
+        """Get ministering reports from Google Sheets."""
         try:
             result = (
                 self.service.spreadsheets()
                 .values()
-                .get(spreadsheetId=self.spreadsheet_id, range=f"{SURVEYS_WORKSHEET}!A:D")
+                .get(spreadsheetId=self.spreadsheet_id, range=f"{MINISTERING_WORKSHEET}!A:B")
                 .execute()
             )
         except HttpError as e:
@@ -172,68 +161,28 @@ class SheetsService(SurveyDataService):
                     f"Spreadsheet not found: {self.spreadsheet_id}"
                 ) from e
             else:
-                raise SheetsServiceError(f"Failed to get survey reports: {e}") from e
+                raise SheetsServiceError(f"Failed to get ministering reports: {e}") from e
         except Exception as e:
-            raise SheetsServiceError(f"Failed to get survey reports: {e}") from e
+            raise SheetsServiceError(f"Failed to get ministering reports: {e}") from e
 
         values = result.get("values", [])
         if not values:
-            return SurveyReport(
-                total_responses=0,
-                organization_breakdown={},
-                question_stats={},
-                question_stats_by_org={},
-            )
+            return MinisteringReport(total_events=0, counts_by_org={})
 
         # Skip header row
         data_rows = values[1:] if len(values) > 1 else []
 
-        total_responses = 0
-        organization_breakdown: dict[str, int] = {}
-        question_stats: dict[str, dict[str, int]] = {
-            "q_did_you_set_a_cfm_goal": {"yes": 0, "no": 0},
-            "q_did_you_make_progress_this_week": {"yes": 0, "no": 0},
-        }
-        question_stats_by_org: dict[str, dict[str, dict[str, int]]] = {
-            "q_did_you_set_a_cfm_goal": {},
-            "q_did_you_make_progress_this_week": {},
-        }
+        total_events = 0
+        counts_by_org: dict[str, int] = {}
 
         for row in data_rows:
-            if len(row) < 4:
-                continue  # Skip incomplete rows
+            if len(row) < 2:
+                continue
+            total_events += 1
+            org = row[1].strip().lower()
+            counts_by_org[org] = counts_by_org.get(org, 0) + 1
 
-            total_responses += 1
-
-            # Extract values
-            org = row[3].strip().lower() if len(row) > 3 else ""
-            cfm_goal = row[1].strip().lower() if len(row) > 1 else ""
-            progress = row[2].strip().lower() if len(row) > 2 else ""
-
-            # Count by organization
-            organization_breakdown[org] = organization_breakdown.get(org, 0) + 1
-
-            # Initialize org dicts if needed
-            if org not in question_stats_by_org["q_did_you_set_a_cfm_goal"]:
-                question_stats_by_org["q_did_you_set_a_cfm_goal"][org] = {"yes": 0, "no": 0}
-            if org not in question_stats_by_org["q_did_you_make_progress_this_week"]:
-                question_stats_by_org["q_did_you_make_progress_this_week"][org] = {"yes": 0, "no": 0}
-
-            # Count by question (overall)
-            if cfm_goal in ("yes", "no"):
-                question_stats["q_did_you_set_a_cfm_goal"][cfm_goal] += 1
-                question_stats_by_org["q_did_you_set_a_cfm_goal"][org][cfm_goal] += 1
-
-            if progress in ("yes", "no"):
-                question_stats["q_did_you_make_progress_this_week"][progress] += 1
-                question_stats_by_org["q_did_you_make_progress_this_week"][org][progress] += 1
-
-        return SurveyReport(
-            total_responses=total_responses,
-            organization_breakdown=organization_breakdown,
-            question_stats=question_stats,
-            question_stats_by_org=question_stats_by_org,
-        )
+        return MinisteringReport(total_events=total_events, counts_by_org=counts_by_org)
 
     def save_story(self, datetime_submitted: str, content: str) -> None:
         """Save a story to Google Sheets."""
@@ -300,7 +249,7 @@ class SheetsService(SurveyDataService):
         stories: list[Story] = []
         for row in data_rows:
             if len(row) < 2:
-                continue  # Skip incomplete rows
+                continue
             stories.append(
                 Story(
                     datetime_submitted=row[0],

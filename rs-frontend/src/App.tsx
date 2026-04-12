@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Bar } from 'react-chartjs-2'
 import {
@@ -21,7 +21,6 @@ ChartJS.register(
   Legend
 )
 
-type Answer = 'yes' | 'no' | null
 type Organization = 'relief-society' | 'elders-quorum' | 'young-mens' | 'young-womens' | null
 
 interface Story {
@@ -29,17 +28,9 @@ interface Story {
   content: string
 }
 
-interface SurveyResult {
-  organization: Organization
-  q_did_you_set_a_cfm_goal: Answer
-  q_did_you_make_progress_this_week: Answer
-}
-
-interface SurveyReport {
-  total_responses: number
-  organization_breakdown: Record<string, number>
-  question_stats: Record<string, Record<string, number>>
-  question_stats_by_org: Record<string, Record<string, Record<string, number>>>
+interface MinisteringReport {
+  total_events: number
+  counts_by_org: Record<string, number>
 }
 
 /**
@@ -58,83 +49,43 @@ function mapOrganizationToBackend(org: Organization): string {
   return mapping[org]
 }
 
-/**
- * Maps backend organization values (with spaces) to frontend format (with hyphens).
- */
-function mapOrganizationFromBackend(org: string): Organization {
-  const mapping: Record<string, Organization> = {
-    'relief society': 'relief-society',
-    'elders quorum': 'elders-quorum',
-    'young mens': 'young-mens',
-    'young womens': 'young-womens',
-  }
-  return mapping[org] || null
-}
-
-/**
- * Wraps text into multiple lines with a maximum character limit per line.
- * Tries to break at word boundaries when possible.
- */
-function wrapText(text: string, maxCharsPerLine: number = 50): string {
-  if (text.length <= maxCharsPerLine) {
-    return text
-  }
-
-  const words = text.split(' ')
-  const lines: string[] = []
-  let currentLine = ''
-
-  for (const word of words) {
-    if (currentLine === '') {
-      currentLine = word
-    } else if ((currentLine + ' ' + word).length <= maxCharsPerLine) {
-      currentLine += ' ' + word
-    } else {
-      lines.push(currentLine)
-      currentLine = word
-    }
-  }
-
-  if (currentLine) {
-    lines.push(currentLine)
-  }
-
-  return lines.join('\n')
-}
-
 function App() {
   const location = useLocation()
   const [organization, setOrganization] = useState<Organization>(null)
-  const [q_did_you_set_a_cfm_goal, setQDidYouSetACfmGoal] = useState<Answer>(null)
-  const [q_did_you_make_progress_this_week, setQDidYouMakeProgressThisWeek] = useState<Answer>(null)
+  const [submitState, setSubmitState] = useState<'idle' | 'submitted'>('idle')
   const [stories, setStories] = useState<Story[]>([])
   const [storyText, setStoryText] = useState<string>('')
-  const [surveyResults, setSurveyResults] = useState<SurveyResult[]>([])
-  const [surveyReport, setSurveyReport] = useState<SurveyReport | null>(null)
+  const [ministeringReport, setMinisteringReport] = useState<MinisteringReport | null>(null)
   const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
   const [isLoadingStories, setIsLoadingStories] = useState<boolean>(false)
   const [storiesError, setStoriesError] = useState<string | null>(null)
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [pendingStoryText, setPendingStoryText] = useState<string>('')
+  const [showCountdownModal, setShowCountdownModal] = useState<boolean>(false)
+  const [countdown, setCountdown] = useState<number>(5)
+  const [showCelebration, setShowCelebration] = useState<boolean>(false)
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pendingOrgRef = useRef<Organization>(null)
 
   // Determine active tab from location
-  const activeTab = location.pathname === '/reports' ? 'reports' 
-    : location.pathname === '/stories' ? 'stories' 
-    : 'submit-goals'
+  const activeTab = location.pathname === '/reports' ? 'reports'
+    : location.pathname === '/stories' ? 'stories'
+    : 'submit'
 
-  // Fetch survey reports from backend
+  // Fetch ministering reports from backend
   useEffect(() => {
     const fetchReports = async () => {
       setIsLoadingReports(true)
       setReportsError(null)
       try {
-        const response = await fetch('/survey/reports')
+        const response = await fetch('/ministering/reports')
         if (!response.ok) {
           throw new Error(`Failed to fetch reports: ${response.statusText}`)
         }
-        const data: SurveyReport = await response.json()
-        setSurveyReport(data)
+        const data: MinisteringReport = await response.json()
+        setMinisteringReport(data)
       } catch (error) {
         console.error('Error fetching reports:', error)
         setReportsError(error instanceof Error ? error.message : 'Failed to fetch reports')
@@ -143,7 +94,6 @@ function App() {
       }
     }
 
-    // Fetch when reports tab is active or on mount
     if (activeTab === 'reports') {
       fetchReports()
     }
@@ -169,231 +119,241 @@ function App() {
       }
     }
 
-    // Fetch when stories tab is active or on mount
     if (activeTab === 'stories') {
       fetchStories()
     }
   }, [activeTab])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    console.log('handleSubmit called')
-    
-    const allAnswered = organization !== null && q_did_you_set_a_cfm_goal !== null && q_did_you_make_progress_this_week !== null
-    
-    if (!allAnswered) {
-      alert('Please answer all questions before submitting.')
+  const handleMinisteringSubmit = () => {
+    if (organization === null) {
+      alert('Please select your organization first.')
       return
     }
+    pendingOrgRef.current = organization
+    setCountdown(5)
+    setShowCountdownModal(true)
+  }
 
-    const results: SurveyResult = {
-      organization,
-      q_did_you_set_a_cfm_goal,
-      q_did_you_make_progress_this_week
-    }
-    
-    // Update local state for immediate UI feedback
-    setSurveyResults(prev => [...prev, results])
-    
-    // Submit to backend
+  const executeMinisteringSubmit = async () => {
+    setShowCountdownModal(false)
+    const org = pendingOrgRef.current
+    if (!org) return
+
     const requestBody = {
-      organization: mapOrganizationToBackend(organization),
-      q_did_you_set_a_cfm_goal: q_did_you_set_a_cfm_goal,
-      q_did_you_make_progress_this_week: q_did_you_make_progress_this_week,
+      organization: mapOrganizationToBackend(org),
     }
-    
-    console.log('Making fetch request to /survey/ with body:', requestBody)
-    
+
     try {
-      const response = await fetch('/survey/', {
+      const response = await fetch('/ministering/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       })
 
-      console.log('Fetch response received:', response.status, response.statusText)
-
       if (!response.ok) {
-        throw new Error(`Failed to submit survey: ${response.statusText}`)
+        throw new Error(`Failed to submit: ${response.statusText}`)
       }
 
-      const data = await response.json()
-      console.log('Survey submitted successfully:', data)
-      alert('Thank you for completing the survey!')
-      
-      // Refresh reports if we're on the reports tab
-      if (activeTab === 'reports') {
-        const reportsResponse = await fetch('/survey/reports')
-        if (reportsResponse.ok) {
-          const reportsData: SurveyReport = await reportsResponse.json()
-          setSurveyReport(reportsData)
-        }
-      }
+      setShowCelebration(true)
+      setSubmitState('submitted')
+
+      setTimeout(() => {
+        setSubmitState('idle')
+        setOrganization(null)
+      }, 4000)
     } catch (error) {
-      console.error('Error submitting survey:', error)
-      alert('Failed to submit survey. Please try again.')
+      console.error('Error submitting ministering event:', error)
+      alert('Failed to submit. Please try again.')
     }
-    
-    // Reset form
-    setOrganization(null)
-    setQDidYouSetACfmGoal(null)
-    setQDidYouMakeProgressThisWeek(null)
+    pendingOrgRef.current = null
   }
 
-  const renderSubmitGoals = () => (
+  const cancelCountdown = () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current)
+      countdownTimerRef.current = null
+    }
+    setShowCountdownModal(false)
+    setCountdown(5)
+  }
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!showCountdownModal) return
+    countdownTimerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownTimerRef.current!)
+          countdownTimerRef.current = null
+          executeMinisteringSubmit()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current)
+        countdownTimerRef.current = null
+      }
+    }
+  }, [showCountdownModal])
+
+  // Confetti spray effect — two bursts from bottom corners
+  useEffect(() => {
+    if (!showCelebration) return
+    const canvas = document.createElement('canvas')
+    canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:2000;pointer-events:none;transition:opacity 0.8s ease'
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    document.body.appendChild(canvas)
+    confettiCanvasRef.current = canvas
+    const ctx = canvas.getContext('2d')!
+
+    const colors = ['#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#E8BAFF', '#FFDAB9', '#C9FFE5']
+    const gravity = 0.12
+
+    type Particle = { x: number; y: number; vx: number; vy: number; color: string; size: number; rotation: number; rotationSpeed: number; shape: 'rect' | 'circle'; alpha: number }
+
+    const sprayFromCorner = (fromRight: boolean): Particle[] => {
+      const originX = fromRight ? canvas.width : 0
+      const originY = canvas.height
+      const spreadAngle = fromRight ? Math.PI * 0.6 : Math.PI * 0.4
+      const baseAngle = fromRight ? Math.PI + spreadAngle / 2 : Math.PI * 2 - spreadAngle / 2
+
+      return Array.from({ length: 80 }, () => {
+        const angle = baseAngle + (fromRight ? -1 : 1) * Math.random() * spreadAngle
+        const speed = 8 + Math.random() * 12
+        return {
+          x: originX,
+          y: originY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 8 + 4,
+          rotation: Math.random() * 360,
+          rotationSpeed: (Math.random() - 0.5) * 8,
+          shape: (Math.random() > 0.5 ? 'rect' : 'circle') as 'rect' | 'circle',
+          alpha: 1,
+        }
+      })
+    }
+
+    const particles: Particle[] = [...sprayFromCorner(true)]
+
+    const secondSprayTimer = setTimeout(() => {
+      particles.push(...sprayFromCorner(false))
+    }, 400)
+
+    let animId: number
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      particles.forEach(p => {
+        p.x += p.vx
+        p.y += p.vy
+        p.vy += gravity
+        p.vx *= 0.99
+        p.rotation += p.rotationSpeed
+        p.alpha = Math.max(0, p.alpha - 0.003)
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate((p.rotation * Math.PI) / 180)
+        ctx.fillStyle = p.color
+        ctx.globalAlpha = p.alpha
+        if (p.shape === 'rect') {
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.5)
+        } else {
+          ctx.beginPath()
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.restore()
+      })
+      animId = requestAnimationFrame(draw)
+    }
+    draw()
+
+    const fadeOut = setTimeout(() => {
+      canvas.style.opacity = '0'
+      setTimeout(() => {
+        cancelAnimationFrame(animId)
+        canvas.remove()
+        confettiCanvasRef.current = null
+        setShowCelebration(false)
+      }, 800)
+    }, 3500)
+
+    return () => {
+      clearTimeout(secondSprayTimer)
+      clearTimeout(fadeOut)
+      cancelAnimationFrame(animId)
+      canvas.remove()
+    }
+  }, [showCelebration])
+
+  const renderSubmit = () => (
     <div className="frosted-glass-card">
-      <h1 className="survey-title">Come Follow Me Tracker</h1>
-      <form onSubmit={handleSubmit}>
+      <h1 className="survey-title">Ministering Tracker</h1>
+
       <div className="question-group">
-          <label className="question-label">
-            Which are you?
-          </label>
-          <div className="icon-group">
-            <button
-              type="button"
-              className={`icon-button ${organization === 'relief-society' ? 'selected' : ''}`}
-              onClick={() => setOrganization('relief-society')}
-              aria-label="Relief Society"
-            >
-              <i className="fa-solid fa-person-dress"></i>
-              <span>Relief Society</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'elders-quorum' ? 'selected' : ''}`}
-              onClick={() => setOrganization('elders-quorum')}
-              aria-label="Elders Quorum"
-            >
-              <i className="fa-solid fa-user-tie"></i>
-              <span>Elders Quorum</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'young-mens' ? 'selected' : ''}`}
-              onClick={() => setOrganization('young-mens')}
-              aria-label="Young Mens"
-            >
-              <i className="fa-solid fa-child"></i>
-              <span>Young Mens</span>
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${organization === 'young-womens' ? 'selected' : ''}`}
-              onClick={() => setOrganization('young-womens')}
-              aria-label="Young Womens"
-            >
-              <i className="fa-solid fa-child-dress"></i>
-              <span>Young Womens</span>
-            </button>
-          </div>
+        <label className="question-label">
+          Which organization are you in?
+        </label>
+        <div className="icon-group">
+          <button
+            type="button"
+            className={`icon-button ${organization === 'relief-society' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('relief-society'); setSubmitState('idle') }}
+            aria-label="Relief Society"
+          >
+            <i className="fa-solid fa-person-dress"></i>
+            <span>Relief Society</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'elders-quorum' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('elders-quorum'); setSubmitState('idle') }}
+            aria-label="Elders Quorum"
+          >
+            <i className="fa-solid fa-user-tie"></i>
+            <span>Elders Quorum</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'young-mens' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('young-mens'); setSubmitState('idle') }}
+            aria-label="Young Mens"
+          >
+            <i className="fa-solid fa-child"></i>
+            <span>Young Mens</span>
+          </button>
+          <button
+            type="button"
+            className={`icon-button ${organization === 'young-womens' ? 'selected' : ''}`}
+            onClick={() => { setOrganization('young-womens'); setSubmitState('idle') }}
+            aria-label="Young Womens"
+          >
+            <i className="fa-solid fa-child-dress"></i>
+            <span>Young Womens</span>
+          </button>
         </div>
+      </div>
 
-        <div className="question-group">
-          <label className="question-label">
-            Did you set or re-evaluate a Come Follow Me goal either individually or with your family?
-          </label>
-          <div className="radio-group">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_set_a_cfm_goal"
-                value="yes"
-                checked={q_did_you_set_a_cfm_goal === 'yes'}
-                onChange={() => setQDidYouSetACfmGoal('yes')}
-              />
-              <span>Yes</span>
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_set_a_cfm_goal"
-                value="no"
-                checked={q_did_you_set_a_cfm_goal === 'no'}
-                onChange={() => setQDidYouSetACfmGoal('no')}
-              />
-              <span>No</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="question-group">
-          <label className="question-label">
-            Did you make progress on your goal this week?
-          </label>
-          <div className="radio-group">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_make_progress_this_week"
-                value="yes"
-                checked={q_did_you_make_progress_this_week === 'yes'}
-                onChange={() => setQDidYouMakeProgressThisWeek('yes')}
-              />
-              <span>Yes</span>
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="q_did_you_make_progress_this_week"
-                value="no"
-                checked={q_did_you_make_progress_this_week === 'no'}
-                onChange={() => setQDidYouMakeProgressThisWeek('no')}
-              />
-              <span>No</span>
-            </label>
-          </div>
-        </div>
-
-      <button type="submit" className="submit-button">
-        Submit
+      <button
+        type="button"
+        className={`ministering-button ${submitState === 'submitted' ? 'submitted' : ''}`}
+        onClick={handleMinisteringSubmit}
+        disabled={submitState === 'submitted'}
+      >
+        {submitState === 'submitted' ? (
+          <><span className="check-icon"><i className="fa-solid fa-circle-check"></i></span> Recorded! Thank you.</>
+        ) : (
+          <><i className="fa-solid fa-hands-holding-heart"></i> I Was Ministered To</>
+        )}
       </button>
-      </form>
+      <p className="submit-hint">Tap to record that you felt supported or ministered to</p>
     </div>
   )
-
-  const getChartData = (questionKey: 'q_did_you_set_a_cfm_goal' | 'q_did_you_make_progress_this_week') => {
-    const orgLabels = ['Relief Society', 'Elders Quorum', 'Young Mens', 'Young Womens']
-    const orgBackendKeys = ['relief society', 'elders quorum', 'young mens', 'young womens']
-    
-    const yesCounts: number[] = []
-
-    if (surveyReport && surveyReport.question_stats_by_org[questionKey]) {
-      // Use backend data
-      orgBackendKeys.forEach(orgBackendKey => {
-        const orgStats = surveyReport.question_stats_by_org[questionKey][orgBackendKey]
-        const yesCount = orgStats?.yes || 0
-        yesCounts.push(yesCount)
-      })
-    } else {
-      // Fallback to local state if backend data not available
-      const orgKeys: Organization[] = ['relief-society', 'elders-quorum', 'young-mens', 'young-womens']
-      
-      orgKeys.forEach(org => {
-        let yesCount = 0
-        surveyResults.forEach(result => {
-          if (result.organization === org) {
-            if (result[questionKey] === 'yes') yesCount++
-          }
-        })
-        yesCounts.push(yesCount)
-      })
-    }
-
-    return {
-      labels: orgLabels,
-      datasets: [
-        {
-          label: 'Yes',
-          data: yesCounts,
-          backgroundColor: 'rgba(255, 255, 255, 0.4)',
-          borderColor: 'rgba(255, 255, 255, 0.6)',
-          borderWidth: 2,
-        },
-      ],
-    }
-  }
 
   const renderReports = () => {
     const chartOptions = {
@@ -444,10 +404,27 @@ function App() {
       },
     }
 
-    const cfmGoalData = getChartData('q_did_you_set_a_cfm_goal')
-    const progressData = getChartData('q_did_you_make_progress_this_week')
+    const orgLabels = ['Relief Society', 'Elders Quorum', 'Young Mens', 'Young Womens']
+    const orgBackendKeys = ['relief society', 'elders quorum', 'young mens', 'young womens']
 
-    const hasData = surveyReport && surveyReport.total_responses > 0
+    const counts = orgBackendKeys.map(key =>
+      ministeringReport?.counts_by_org[key] || 0
+    )
+
+    const chartData = {
+      labels: orgLabels,
+      datasets: [
+        {
+          label: 'Times Ministered To',
+          data: counts,
+          backgroundColor: 'rgba(255, 255, 255, 0.4)',
+          borderColor: 'rgba(255, 255, 255, 0.6)',
+          borderWidth: 2,
+        },
+      ],
+    }
+
+    const hasData = ministeringReport && ministeringReport.total_events > 0
 
     return (
       <div className="reports-container">
@@ -464,25 +441,16 @@ function App() {
               </p>
             ) : !hasData ? (
               <p style={{ color: 'white', textAlign: 'center', fontSize: '1.1rem', padding: '2rem' }}>
-                No survey data yet. Submit some goals to see reports!
+                No data yet. Record a ministering event to see reports!
               </p>
             ) : (
               <div className="charts-wrapper">
                 <div className="chart-wrapper">
-                  <p className="chart-title">Did you set or re-evaluate a Come Follow Me goal either individually or with your family?</p>
+                  <p className="chart-title">Times Members Felt Ministered To &mdash; by Organization</p>
                   <div className="chart-container">
-                    <Bar 
-                      data={{ ...cfmGoalData }} 
-                      options={chartOptions} 
-                    />
-                  </div>
-                </div>
-                <div className="chart-wrapper">
-                  <p className="chart-title">Did you make progress on your goal this week?</p>
-                  <div className="chart-container">
-                    <Bar 
-                      data={{ ...progressData }} 
-                      options={chartOptions} 
+                    <Bar
+                      data={chartData}
+                      options={chartOptions}
                     />
                   </div>
                 </div>
@@ -522,15 +490,13 @@ function App() {
         throw new Error(`Failed to submit story: ${response.statusText}`)
       }
 
-      const newStory: Story = await response.json()
-      
       // Refresh stories list
       const storiesResponse = await fetch('/stories/')
       if (storiesResponse.ok) {
         const storiesData: Story[] = await storiesResponse.json()
         setStories(storiesData)
       }
-      
+
       setStoryText('')
       setPendingStoryText('')
     } catch (error) {
@@ -545,8 +511,6 @@ function App() {
   }
 
   const formatTimestamp = (datetimeStr: string) => {
-    // Parse datetime string in format "YYYY-MM-DD HH:MM:SS UTC"
-    // Convert to ISO format: "YYYY-MM-DDTHH:MM:SSZ"
     const isoStr = datetimeStr.replace(' UTC', '').replace(' ', 'T') + 'Z'
     const date = new Date(isoStr)
     const now = new Date()
@@ -570,7 +534,7 @@ function App() {
           <textarea
             value={storyText}
             onChange={(e) => setStoryText(e.target.value)}
-            placeholder="What's on your mind?"
+            placeholder="Share a time you felt supported or ministered to..."
             className="story-textarea"
             rows={4}
           />
@@ -629,9 +593,9 @@ function App() {
       <nav className="tab-bar">
         <Link
           to="/"
-          className={`tab-button ${activeTab === 'submit-goals' ? 'active' : ''}`}
+          className={`tab-button ${activeTab === 'submit' ? 'active' : ''}`}
         >
-          Submit Goals
+          Submit
         </Link>
         <Link
           to="/reports"
@@ -649,7 +613,7 @@ function App() {
 
       <div className="content-wrapper">
         <Routes>
-          <Route path="/" element={<>{renderSubmitGoals()}</>} />
+          <Route path="/" element={<>{renderSubmit()}</>} />
           <Route path="/reports" element={<>{renderReports()}</>} />
           <Route path="/stories" element={<>{renderStories()}</>} />
         </Routes>
@@ -674,6 +638,35 @@ function App() {
                 onClick={confirmStorySubmit}
               >
                 Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCountdownModal && (
+        <div className="countdown-modal-overlay" onClick={cancelCountdown}>
+          <div className="countdown-modal-content" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">Submitting...</h2>
+            <p className="modal-message">Auto-submitting in...</p>
+            <div className="countdown-ring-wrapper">
+              <svg className="countdown-ring" viewBox="0 0 100 100">
+                <circle className="countdown-ring-bg" cx="50" cy="50" r="42" />
+                <circle
+                  className="countdown-ring-progress"
+                  cx="50" cy="50" r="42"
+                  style={{ strokeDashoffset: `${264 * (5 - countdown) / 5}` }}
+                />
+              </svg>
+              <span className="countdown-number">{countdown}</span>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="modal-button modal-button-cancel"
+                onClick={cancelCountdown}
+              >
+                Cancel
               </button>
             </div>
           </div>

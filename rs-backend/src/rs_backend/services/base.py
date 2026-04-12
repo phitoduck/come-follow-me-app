@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from rs_backend.schemas.enums import Organization, YesNo
-from rs_backend.schemas.survey import SurveyReport
+from rs_backend.schemas.enums import Organization
+from rs_backend.schemas.survey import MinisteringReport
 from rs_backend.schemas.story import Story
 
 
@@ -9,19 +9,17 @@ class SurveyDataService(ABC):
     """Abstract base class for data persistence services."""
 
     @abstractmethod
-    def save_survey_response(
+    def save_ministering_event(
         self,
         datetime_submitted: str,
-        q_did_you_set_a_cfm_goal: YesNo,
-        q_did_you_make_progress_this_week: YesNo,
         organization: Organization,
     ) -> None:
-        """Save a survey response to storage."""
+        """Save a ministering event to storage."""
         pass
 
     @abstractmethod
-    def get_survey_reports(self) -> SurveyReport:
-        """Get survey reports and statistics."""
+    def get_ministering_reports(self) -> MinisteringReport:
+        """Get ministering reports and statistics."""
         pass
 
     @abstractmethod
