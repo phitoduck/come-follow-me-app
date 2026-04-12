@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Bar } from 'react-chartjs-2'
 import {
@@ -62,6 +62,12 @@ function App() {
   const [storiesError, setStoriesError] = useState<string | null>(null)
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [pendingStoryText, setPendingStoryText] = useState<string>('')
+  const [showCountdownModal, setShowCountdownModal] = useState<boolean>(false)
+  const [countdown, setCountdown] = useState<number>(5)
+  const [showCelebration, setShowCelebration] = useState<boolean>(false)
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pendingOrgRef = useRef<Organization>(null)
 
   // Determine active tab from location
   const activeTab = location.pathname === '/reports' ? 'reports'
@@ -118,22 +124,29 @@ function App() {
     }
   }, [activeTab])
 
-  const handleMinisteringSubmit = async () => {
+  const handleMinisteringSubmit = () => {
     if (organization === null) {
       alert('Please select your organization first.')
       return
     }
+    pendingOrgRef.current = organization
+    setCountdown(5)
+    setShowCountdownModal(true)
+  }
+
+  const executeMinisteringSubmit = async () => {
+    setShowCountdownModal(false)
+    const org = pendingOrgRef.current
+    if (!org) return
 
     const requestBody = {
-      organization: mapOrganizationToBackend(organization),
+      organization: mapOrganizationToBackend(org),
     }
 
     try {
       const response = await fetch('/ministering/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       })
 
@@ -141,18 +154,142 @@ function App() {
         throw new Error(`Failed to submit: ${response.statusText}`)
       }
 
+      setShowCelebration(true)
       setSubmitState('submitted')
 
-      // Reset after 2 seconds
       setTimeout(() => {
         setSubmitState('idle')
         setOrganization(null)
-      }, 2000)
+      }, 4000)
     } catch (error) {
       console.error('Error submitting ministering event:', error)
       alert('Failed to submit. Please try again.')
     }
+    pendingOrgRef.current = null
   }
+
+  const cancelCountdown = () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current)
+      countdownTimerRef.current = null
+    }
+    setShowCountdownModal(false)
+    setCountdown(5)
+  }
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!showCountdownModal) return
+    countdownTimerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownTimerRef.current!)
+          countdownTimerRef.current = null
+          executeMinisteringSubmit()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current)
+        countdownTimerRef.current = null
+      }
+    }
+  }, [showCountdownModal])
+
+  // Confetti spray effect — two bursts from bottom corners
+  useEffect(() => {
+    if (!showCelebration) return
+    const canvas = document.createElement('canvas')
+    canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:2000;pointer-events:none;transition:opacity 0.8s ease'
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+    document.body.appendChild(canvas)
+    confettiCanvasRef.current = canvas
+    const ctx = canvas.getContext('2d')!
+
+    const colors = ['#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#E8BAFF', '#FFDAB9', '#C9FFE5']
+    const gravity = 0.12
+
+    type Particle = { x: number; y: number; vx: number; vy: number; color: string; size: number; rotation: number; rotationSpeed: number; shape: 'rect' | 'circle'; alpha: number }
+
+    const sprayFromCorner = (fromRight: boolean): Particle[] => {
+      const originX = fromRight ? canvas.width : 0
+      const originY = canvas.height
+      const spreadAngle = fromRight ? Math.PI * 0.6 : Math.PI * 0.4
+      const baseAngle = fromRight ? Math.PI + spreadAngle / 2 : Math.PI * 2 - spreadAngle / 2
+
+      return Array.from({ length: 80 }, () => {
+        const angle = baseAngle + (fromRight ? -1 : 1) * Math.random() * spreadAngle
+        const speed = 8 + Math.random() * 12
+        return {
+          x: originX,
+          y: originY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 8 + 4,
+          rotation: Math.random() * 360,
+          rotationSpeed: (Math.random() - 0.5) * 8,
+          shape: (Math.random() > 0.5 ? 'rect' : 'circle') as 'rect' | 'circle',
+          alpha: 1,
+        }
+      })
+    }
+
+    const particles: Particle[] = [...sprayFromCorner(true)]
+
+    const secondSprayTimer = setTimeout(() => {
+      particles.push(...sprayFromCorner(false))
+    }, 400)
+
+    let animId: number
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      particles.forEach(p => {
+        p.x += p.vx
+        p.y += p.vy
+        p.vy += gravity
+        p.vx *= 0.99
+        p.rotation += p.rotationSpeed
+        p.alpha = Math.max(0, p.alpha - 0.003)
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate((p.rotation * Math.PI) / 180)
+        ctx.fillStyle = p.color
+        ctx.globalAlpha = p.alpha
+        if (p.shape === 'rect') {
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.5)
+        } else {
+          ctx.beginPath()
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.restore()
+      })
+      animId = requestAnimationFrame(draw)
+    }
+    draw()
+
+    const fadeOut = setTimeout(() => {
+      canvas.style.opacity = '0'
+      setTimeout(() => {
+        cancelAnimationFrame(animId)
+        canvas.remove()
+        confettiCanvasRef.current = null
+        setShowCelebration(false)
+      }, 800)
+    }, 3500)
+
+    return () => {
+      clearTimeout(secondSprayTimer)
+      clearTimeout(fadeOut)
+      cancelAnimationFrame(animId)
+      canvas.remove()
+    }
+  }, [showCelebration])
 
   const renderSubmit = () => (
     <div className="frosted-glass-card">
@@ -501,6 +638,35 @@ function App() {
                 onClick={confirmStorySubmit}
               >
                 Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCountdownModal && (
+        <div className="countdown-modal-overlay" onClick={cancelCountdown}>
+          <div className="countdown-modal-content" onClick={e => e.stopPropagation()}>
+            <h2 className="modal-title">Submitting...</h2>
+            <p className="modal-message">Auto-submitting in...</p>
+            <div className="countdown-ring-wrapper">
+              <svg className="countdown-ring" viewBox="0 0 100 100">
+                <circle className="countdown-ring-bg" cx="50" cy="50" r="42" />
+                <circle
+                  className="countdown-ring-progress"
+                  cx="50" cy="50" r="42"
+                  style={{ strokeDashoffset: `${264 * (5 - countdown) / 5}` }}
+                />
+              </svg>
+              <span className="countdown-number">{countdown}</span>
+            </div>
+            <div className="modal-actions" style={{ justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="modal-button modal-button-cancel"
+                onClick={cancelCountdown}
+              >
+                Cancel
               </button>
             </div>
           </div>
