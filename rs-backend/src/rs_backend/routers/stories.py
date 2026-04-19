@@ -29,4 +29,9 @@ async def post_story(story: StoryCreate, request: Request) -> Story:
 async def get_stories(request: Request) -> list[Story]:
     """Get all stories."""
     service: SurveyDataService = request.app.state.survey_data_service
-    return service.get_stories()
+    stories = service.get_stories()
+    stories.sort(
+        key=lambda s: datetime.strptime(s.datetime_submitted, "%Y-%m-%d %H:%M:%S %Z"),
+        reverse=True,
+    )
+    return stories
