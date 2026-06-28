@@ -1,0 +1,26 @@
+# Run the app locally with the real Google Sheets backend.
+#
+# Defaults:
+#   - Mounts ./google-credentials.json (the service-account JSON checked into
+#     this repo's .gitignore but present on Eric's machine).
+#   - Writes to the missionary_experiences worksheet (auto-created on first
+#     submit) inside the production "Come Follow Me Survey" spreadsheet.
+#
+# Override per-host by setting CFM_APP_GOOGLE_CREDENTIALS_PATH or
+# CFM_APP_SPREADSHEET_ID before invoking `docker compose up`.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rs-app:local
+    ports:
+      - "${CFM_APP_PORT:-9999}:8080"
+    environment:
+      RS_SURVEY__USE_CSV_SERVICE: "false"
+      RS_SURVEY__GOOGLE_SHEETS_CREDENTIALS_PATH: /app/google-credentials.json
+      RS_SURVEY__GOOGLE_SHEETS_SPREADSHEET_ID: "${CFM_APP_SPREADSHEET_ID:-12zv4FtCf_Lkpn2Vgm8WekSING4Bh6hf3keL7-yyqM-8}"
+    volumes:
+      - "${CFM_APP_GOOGLE_CREDENTIALS_PATH:-./google-credentials.json}:/app/google-credentials.json:ro"
+    restart: unless-stopped
