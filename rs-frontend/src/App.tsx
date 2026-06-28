@@ -28,9 +28,34 @@ interface Story {
   content: string
 }
 
-interface MinisteringReport {
-  total_events: number
+interface MissionaryExperienceReport {
+  total_answers: number
   counts_by_org: Record<string, number>
+}
+
+interface BackendQuestion {
+  id: number
+  text: string
+}
+
+const OTHER_QUESTION_ID = 14
+
+// Short labels shown under the "Did you..." title (leading "Did you" clipped).
+const QUESTION_SHORT_LABELS: Record<number, string> = {
+  1: 'have the missionaries over for dinner?',
+  2: 'give someone a ride?',
+  3: 'reach out to your ministering families?',
+  4: 'pray for a missionary experience?',
+  5: 'pray for the families to whom you minister?',
+  6: 'have your ministering interview?',
+  7: 'fill out a BINGO square?',
+  8: 'invite a friend or neighbor to an activity?',
+  9: 'take a friend with you to the temple?',
+  10: 'share a conference talk or scripture?',
+  11: "answer someone's question about your church?",
+  12: 'make an invitation this week?',
+  13: 'join a lesson with the missionaries?',
+  14: 'Other:',
 }
 
 /**
@@ -55,7 +80,7 @@ function App() {
   const [submitState, setSubmitState] = useState<'idle' | 'submitted'>('idle')
   const [stories, setStories] = useState<Story[]>([])
   const [storyText, setStoryText] = useState<string>('')
-  const [ministeringReport, setMinisteringReport] = useState<MinisteringReport | null>(null)
+  const [report, setReport] = useState<MissionaryExperienceReport | null>(null)
   const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
   const [isLoadingStories, setIsLoadingStories] = useState<boolean>(false)
@@ -65,27 +90,30 @@ function App() {
   const [showCountdownModal, setShowCountdownModal] = useState<boolean>(false)
   const [countdown, setCountdown] = useState<number>(5)
   const [showCelebration, setShowCelebration] = useState<boolean>(false)
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<Set<number>>(new Set())
+  const [otherText, setOtherText] = useState<string>('')
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const pendingOrgRef = useRef<Organization>(null)
+  const pendingAnswersRef = useRef<Array<{ question_id: number; other_text?: string }>>([])
 
   // Determine active tab from location
   const activeTab = location.pathname === '/reports' ? 'reports'
     : location.pathname === '/stories' ? 'stories'
     : 'submit'
 
-  // Fetch ministering reports from backend
+  // Fetch report data from backend
   useEffect(() => {
     const fetchReports = async () => {
       setIsLoadingReports(true)
       setReportsError(null)
       try {
-        const response = await fetch('/ministering/reports')
+        const response = await fetch('/missionary-experience/reports')
         if (!response.ok) {
           throw new Error(`Failed to fetch reports: ${response.statusText}`)
         }
-        const data: MinisteringReport = await response.json()
-        setMinisteringReport(data)
+        const data: MissionaryExperienceReport = await response.json()
+        setReport(data)
       } catch (error) {
         console.error('Error fetching reports:', error)
         setReportsError(error instanceof Error ? error.message : 'Failed to fetch reports')
@@ -124,27 +152,61 @@ function App() {
     }
   }, [activeTab])
 
-  const handleMinisteringSubmit = () => {
+  const toggleQuestion = (qid: number) => {
+    setSelectedQuestionIds(prev => {
+      const next = new Set(prev)
+      if (next.has(qid)) {
+        next.delete(qid)
+      } else {
+        next.add(qid)
+      }
+      return next
+    })
+    setSubmitState('idle')
+  }
+
+  const handleMissionarySubmit = () => {
     if (organization === null) {
       alert('Please select your organization first.')
       return
     }
+    if (selectedQuestionIds.size === 0) {
+      alert('Please select at least one experience before submitting.')
+      return
+    }
+    if (
+      selectedQuestionIds.has(OTHER_QUESTION_ID) &&
+      otherText.trim().length === 0
+    ) {
+      alert('You selected "Other" — please describe your experience.')
+      return
+    }
+    const answers = Array.from(selectedQuestionIds)
+      .sort((a, b) => a - b)
+      .map(qid =>
+        qid === OTHER_QUESTION_ID
+          ? { question_id: qid, other_text: otherText.trim() }
+          : { question_id: qid },
+      )
     pendingOrgRef.current = organization
+    pendingAnswersRef.current = answers
     setCountdown(5)
     setShowCountdownModal(true)
   }
 
-  const executeMinisteringSubmit = async () => {
+  const executeSubmit = async () => {
     setShowCountdownModal(false)
     const org = pendingOrgRef.current
-    if (!org) return
+    const answers = pendingAnswersRef.current
+    if (!org || answers.length === 0) return
 
     const requestBody = {
       organization: mapOrganizationToBackend(org),
+      answers,
     }
 
     try {
-      const response = await fetch('/ministering/', {
+      const response = await fetch('/missionary-experience/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -160,12 +222,15 @@ function App() {
       setTimeout(() => {
         setSubmitState('idle')
         setOrganization(null)
+        setSelectedQuestionIds(new Set())
+        setOtherText('')
       }, 4000)
     } catch (error) {
-      console.error('Error submitting ministering event:', error)
+      console.error('Error submitting missionary experience:', error)
       alert('Failed to submit. Please try again.')
     }
     pendingOrgRef.current = null
+    pendingAnswersRef.current = []
   }
 
   const cancelCountdown = () => {
@@ -185,7 +250,7 @@ function App() {
         if (prev <= 1) {
           clearInterval(countdownTimerRef.current!)
           countdownTimerRef.current = null
-          executeMinisteringSubmit()
+          executeSubmit()
           return 0
         }
         return prev - 1
@@ -291,10 +356,24 @@ function App() {
     }
   }, [showCelebration])
 
+  // Static catalog of questions — IDs match backend (rs_backend/questions.py).
+  const questions: BackendQuestion[] = Array.from({ length: 14 }, (_, i) => ({
+    id: i + 1,
+    text: QUESTION_SHORT_LABELS[i + 1],
+  }))
+
+  const accordionOpen = organization !== null
+
+  // Display labels used in the dynamic submit hint (per design feedback).
+  const ORG_DISPLAY_LABELS: Record<Exclude<Organization, null>, string> = {
+    'relief-society': 'Relief Society',
+    'elders-quorum': "Elder's Quorum",
+    'young-mens': 'Young Men',
+    'young-womens': 'Young Women',
+  }
+
   const renderSubmit = () => (
     <div className="frosted-glass-card">
-      <h1 className="survey-title">Ministering Tracker</h1>
-
       <div className="question-group">
         <label className="question-label">
           Which organization are you in?
@@ -339,19 +418,68 @@ function App() {
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`ministering-button ${submitState === 'submitted' ? 'submitted' : ''}`}
-        onClick={handleMinisteringSubmit}
-        disabled={submitState === 'submitted'}
+      <div
+        className={`accordion ${accordionOpen ? 'open' : ''}`}
+        aria-hidden={!accordionOpen}
       >
-        {submitState === 'submitted' ? (
-          <><span className="check-icon"><i className="fa-solid fa-circle-check"></i></span> Recorded! Thank you.</>
-        ) : (
-          <><i className="fa-solid fa-hands-holding-heart"></i> I Was Ministered To</>
-        )}
-      </button>
-      <p className="submit-hint">Tap to record that you felt supported or ministered to</p>
+        <div className="accordion-inner">
+          <div className="question-group">
+            <h2 className="section-heading">Missionary Experience</h2>
+            <p className="question-label question-prompt">
+              Did you... (select all that apply)
+            </p>
+            <ul className="checkbox-list">
+              {questions.map((q) => {
+                const checked = selectedQuestionIds.has(q.id)
+                const isOther = q.id === OTHER_QUESTION_ID
+                return (
+                  <li
+                    key={q.id}
+                    className={`checkbox-row ${checked ? 'checked' : ''} ${isOther ? 'other-row' : ''}`}
+                  >
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleQuestion(q.id)}
+                      />
+                      <span className="checkbox-text">{q.text}</span>
+                    </label>
+                    {isOther && checked && (
+                      <input
+                        type="text"
+                        className="other-input"
+                        placeholder="Describe your experience…"
+                        value={otherText}
+                        onChange={(e) => setOtherText(e.target.value)}
+                        autoFocus
+                      />
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
+          <button
+            type="button"
+            className={`ministering-button ${submitState === 'submitted' ? 'submitted' : ''}`}
+            onClick={handleMissionarySubmit}
+            disabled={submitState === 'submitted'}
+          >
+            {submitState === 'submitted' ? (
+              <><span className="check-icon"><i className="fa-solid fa-circle-check"></i></span> Recorded! Thank you.</>
+            ) : (
+              <><i className="fa-solid fa-hands-holding-heart"></i> Submit</>
+            )}
+          </button>
+          {organization !== null && (
+            <p className="submit-hint">
+              Each item counts as +1 point for the {ORG_DISPLAY_LABELS[organization]}.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 
@@ -408,14 +536,14 @@ function App() {
     const orgBackendKeys = ['relief society', 'elders quorum', 'young mens', 'young womens']
 
     const counts = orgBackendKeys.map(key =>
-      ministeringReport?.counts_by_org[key] || 0
+      report?.counts_by_org[key] || 0
     )
 
     const chartData = {
       labels: orgLabels,
       datasets: [
         {
-          label: 'Times Ministered To',
+          label: 'Missionary Experiences',
           data: counts,
           backgroundColor: 'rgba(255, 255, 255, 0.4)',
           borderColor: 'rgba(255, 255, 255, 0.6)',
@@ -424,7 +552,7 @@ function App() {
       ],
     }
 
-    const hasData = ministeringReport && ministeringReport.total_events > 0
+    const hasData = report && report.total_answers > 0
 
     return (
       <div className="reports-container">
@@ -441,12 +569,12 @@ function App() {
               </p>
             ) : !hasData ? (
               <p style={{ color: 'white', textAlign: 'center', fontSize: '1.1rem', padding: '2rem' }}>
-                No data yet. Record a ministering event to see reports!
+                No data yet. Submit a missionary experience to see reports!
               </p>
             ) : (
               <div className="charts-wrapper">
                 <div className="chart-wrapper">
-                  <p className="chart-title">Times Members Felt Ministered To &mdash; by Organization</p>
+                  <p className="chart-title">Missionary Experiences Recorded &mdash; by Organization</p>
                   <div className="chart-container">
                     <Bar
                       data={chartData}

@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from loguru import logger
 
 import rs_backend.logger  # noqa: F401  # Import to configure logger
-from rs_backend.routers import survey, stories
+from rs_backend.routers import missionary_experience, survey, stories
 from rs_backend.settings import Settings
 from rs_backend.services.base import SurveyDataService
 from rs_backend.services.csv_service import CSVService
@@ -88,6 +88,7 @@ def create_app() -> FastAPI:
     # Include routers first (so API routes and /docs work)
     app.include_router(survey.router)
     app.include_router(stories.router)
+    app.include_router(missionary_experience.router)
 
     # Serve static files - use catch-all route for SPA
     @app.get("/{path:path}", include_in_schema=False)
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
             or path.startswith("redoc")
             or path.startswith("ministering")
             or path.startswith("stories")
+            or path.startswith("missionary-experience")
         ):
             from fastapi import HTTPException
             raise HTTPException(status_code=404)
