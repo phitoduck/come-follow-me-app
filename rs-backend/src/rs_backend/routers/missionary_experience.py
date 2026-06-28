@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from rs_backend.questions import OTHER_QUESTION_ID, QUESTIONS, QUESTIONS_BY_ID, Question
+from rs_backend.questions import (
+    OTHER_QUESTION_ID,
+    QUESTIONS,
+    QUESTIONS_BY_ID,
+    Question,
+    to_sheet_text,
+)
 from rs_backend.schemas.missionary_experience import (
     MissionaryExperienceReport,
     MissionaryExperienceRequest,
@@ -39,10 +45,12 @@ async def submit_missionary_experience(
                 status_code=400,
                 detail=f"Unknown question_id: {answer.question_id}",
             )
-        if question.id == OTHER_QUESTION_ID and answer.other_text:
-            question_text = f"Other: {answer.other_text.strip()}"
+        if question.id == OTHER_QUESTION_ID:
+            # For "Other", persist the user's verbatim description rather
+            # than the canonical "Other" label so the row is self-explanatory.
+            question_text = (answer.other_text or "").strip() or question.text
         else:
-            question_text = question.text
+            question_text = to_sheet_text(question.text)
         service.save_missionary_experience_answer(
             datetime_submitted=datetime_submitted,
             organization=payload.organization,

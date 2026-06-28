@@ -38,7 +38,7 @@ interface BackendQuestion {
   text: string
 }
 
-const OTHER_QUESTION_ID = 14
+const OTHER_QUESTION_ID = 15
 
 // Short labels shown under the "Did you..." title (leading "Did you" clipped).
 const QUESTION_SHORT_LABELS: Record<number, string> = {
@@ -55,7 +55,8 @@ const QUESTION_SHORT_LABELS: Record<number, string> = {
   11: "answer someone's question about your church?",
   12: 'make an invitation this week?',
   13: 'join a lesson with the missionaries?',
-  14: 'Other:',
+  14: 'sit by someone new at church?',
+  15: 'Other:',
 }
 
 /**
@@ -357,7 +358,7 @@ function App() {
   }, [showCelebration])
 
   // Static catalog of questions — IDs match backend (rs_backend/questions.py).
-  const questions: BackendQuestion[] = Array.from({ length: 14 }, (_, i) => ({
+  const questions: BackendQuestion[] = Array.from({ length: 15 }, (_, i) => ({
     id: i + 1,
     text: QUESTION_SHORT_LABELS[i + 1],
   }))
