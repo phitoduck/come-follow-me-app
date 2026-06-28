@@ -375,6 +375,8 @@ function App() {
 
   const renderSubmit = () => (
     <div className="frosted-glass-card">
+      <h1 className="survey-title">Missionary Experiences</h1>
+
       <div className="question-group">
         <label className="question-label">
           Which organization are you in?
