@@ -3,7 +3,8 @@
 Single source of truth used by both backend (when persisting per-question rows)
 and frontend (fetched via /missionary-experience/questions so the two stay
 in lock-step). Question IDs are stable 1-based ordinals; the literal text is
-what gets written into the spreadsheet for human readability.
+what gets shown in the UI, while `sheet_text` is the trimmed form persisted
+to Google Sheets.
 """
 
 from pydantic import BaseModel
@@ -14,9 +15,9 @@ class Question(BaseModel):
     text: str
 
 
-# 1-13 are pre-defined prompts; 14 ("Other") accepts free-form text supplied
-# by the user, in which case the text written to the sheet is the user's input
-# (the canonical text below is just a placeholder/label).
+# 1-14 are pre-defined "Did you..." prompts; 15 ("Other") accepts free-form
+# text supplied by the user. IDs are append-only — once persisted to Sheets
+# the (id → text) mapping must not change.
 QUESTIONS: list[Question] = [
     Question(id=1, text="Did you have the missionaries over for dinner?"),
     Question(id=2, text="Did you give someone a ride?"),
@@ -31,8 +32,26 @@ QUESTIONS: list[Question] = [
     Question(id=11, text="Did you answer someone's question about your church?"),
     Question(id=12, text="Did you make an invitation this week?"),
     Question(id=13, text="Did you join a lesson with the missionaries?"),
-    Question(id=14, text="Other"),
+    Question(id=14, text="Did you sit by someone new at church?"),
+    Question(id=15, text="Other"),
 ]
 
 QUESTIONS_BY_ID: dict[int, Question] = {q.id: q for q in QUESTIONS}
-OTHER_QUESTION_ID: int = 14
+OTHER_QUESTION_ID: int = 15
+
+_DID_YOU_PREFIX = "Did you "
+
+
+def to_sheet_text(question_text: str) -> str:
+    """Trim the canonical "Did you ...?" form down to the bare verb phrase.
+
+    "Did you have the missionaries over for dinner?" → "have the missionaries
+    over for dinner". Text that doesn't start with "Did you " is returned
+    with only its trailing "?" stripped.
+    """
+    text = question_text
+    if text.startswith(_DID_YOU_PREFIX):
+        text = text[len(_DID_YOU_PREFIX):]
+    if text.endswith("?"):
+        text = text[:-1]
+    return text.strip()
