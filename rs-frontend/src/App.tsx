@@ -364,6 +364,14 @@ function App() {
 
   const accordionOpen = organization !== null
 
+  // Display labels used in the dynamic submit hint (per design feedback).
+  const ORG_DISPLAY_LABELS: Record<Exclude<Organization, null>, string> = {
+    'relief-society': 'Relief Society',
+    'elders-quorum': "Elder's Quorum",
+    'young-mens': 'Young Men',
+    'young-womens': 'Young Women',
+  }
+
   const renderSubmit = () => (
     <div className="frosted-glass-card">
       <div className="question-group">
@@ -465,6 +473,11 @@ function App() {
               <><i className="fa-solid fa-hands-holding-heart"></i> Submit</>
             )}
           </button>
+          {organization !== null && (
+            <p className="submit-hint">
+              Each item counts as +1 point for the {ORG_DISPLAY_LABELS[organization]}.
+            </p>
+          )}
         </div>
       </div>
     </div>
