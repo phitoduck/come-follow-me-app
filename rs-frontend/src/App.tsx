@@ -366,8 +366,6 @@ function App() {
 
   const renderSubmit = () => (
     <div className="frosted-glass-card">
-      <h1 className="survey-title">Missionary Experience</h1>
-
       <div className="question-group">
         <label className="question-label">
           Which organization are you in?
@@ -418,8 +416,9 @@ function App() {
       >
         <div className="accordion-inner">
           <div className="question-group">
+            <h2 className="section-heading">Missionary Experience</h2>
             <p className="question-label question-prompt">
-              Did you have a missionary experience this week? Did you...
+              Did you... (select all that apply)
             </p>
             <ul className="checkbox-list">
               {questions.map((q) => {
@@ -436,7 +435,6 @@ function App() {
                         checked={checked}
                         onChange={() => toggleQuestion(q.id)}
                       />
-                      <span className="checkbox-number">{q.id}.</span>
                       <span className="checkbox-text">{q.text}</span>
                     </label>
                     {isOther && checked && (
@@ -467,9 +465,6 @@ function App() {
               <><i className="fa-solid fa-hands-holding-heart"></i> Submit</>
             )}
           </button>
-          <p className="submit-hint">
-            Each selected experience is recorded as +1 toward your organization's bar.
-          </p>
         </div>
       </div>
     </div>
